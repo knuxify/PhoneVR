@@ -211,6 +211,7 @@ task buildClientLib {
     doLast {
         exec {
             workingDir '../ALVR'
+            environment 'ANDROID_NDK_HOME', '/home/knuxify/Android/Sdk/ndk' // HACK remove me!!
             if(defaultALVRFlavour.length() > 0)
                 commandLine 'cargo', 'xtask', 'build-client-lib', '--no-stdcpp', defaultALVRFlavour
             else
