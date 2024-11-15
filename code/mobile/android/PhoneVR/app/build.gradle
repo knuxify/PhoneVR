@@ -168,7 +168,7 @@ dependencies {
 
     gvrImplementation 'com.google.vr:sdk-base:1.200.0@aar'
     implementation 'com.google.cardboard.sdk:cardboard-sdk:1.17.0@aar'
-    implementation 'io.github.zxing-cpp:android:2.2.0-SNAPSHOT'
+    implementation 'io.github.zxing-cpp:android:2.3.0-SNAPSHOT'
     implementation 'com.google.protobuf:protobuf-javalite:3.19.4'
     implementation 'androidx.camera:camera-core:1.3.4'
     implementation 'androidx.camera:camera-view:1.3.4'
@@ -212,6 +212,7 @@ task buildClientLib {
     doLast {
         exec {
             workingDir '../ALVR'
+            environment 'ANDROID_NDK_HOME', '/home/knuxify/Android/Sdk/ndk' // HACK remove me!!
             if(defaultALVRFlavour.length() > 0)
                 commandLine 'cargo', 'xtask', 'build-client-lib', '--no-stdcpp', defaultALVRFlavour
             else
