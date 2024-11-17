@@ -69,7 +69,7 @@ public class DiscordReportSender implements ReportSender {
                 // String urlString =
                 // "https://discord.com/api/webhooks/772915848775991310/teIX_7vPM30wrx5bjs1iFsHPBIL-twth6iPH1cd5VW5W2goxr50SmPT3l3O4X7iB9bSG"; // URL to call
                 String urlString =
-                        "https://discord.com/api/webhooks/1095611501554958356/oIAVJopxxG0i_MAAjwOS0FwV4_ycIG3709gs4zIlCpyLpCNcbBCGiB1mo7B1qCB_uk7z"; // URL to call
+                        "https://discord.com/api/webhooks/1307358591619174400/BF5guDSMh6bh6_q30mJNu8aJcVUpDCBZL86ImBmJTbuGkL_UKeXWH8YCkO6UHbwN14MP"; // URL to call
                 URL url = new URL(urlString);
                 String boundary = UUID.randomUUID().toString();
                 HttpURLConnection urlConnection = (HttpURLConnection) url.openConnection();
