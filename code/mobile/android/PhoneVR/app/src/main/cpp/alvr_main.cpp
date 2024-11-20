@@ -5,6 +5,7 @@
 #include <EGL/egl.h>
 #include <algorithm>
 #include <android/log.h>
+#include <android/sensor.h>
 #include <deque>
 #include <jni.h>
 #include <map>
@@ -24,10 +25,16 @@ uint64_t HEAD_ID = alvr_path_string_to_id("/user/head");
 // which is probably nauseating for most folks. TODO.
 bool useARCoreOrientation = false;
 
+// TODO: Also make this configurable
+bool useBarometerAltitudeTracking = true;
+
 // Note: the Cardboard SDK cannot estimate display time and an heuristic is used instead.
 const uint64_t VSYNC_QUEUE_INTERVAL_NS = 50e6;
 const float FLOOR_HEIGHT = 1.5;
 const int MAXIMUM_TRACKING_FRAMES = 360;
+
+float tmp_minPressure = 0;
+float tmp_maxPressure = 0;
 
 struct NativeContext {
     JavaVM *javaVm = nullptr;
@@ -44,6 +51,11 @@ struct NativeContext {
 
     AlvrQuat lastOrientation = {0.f, 0.f, 0.f, 0.f};
     float lastPosition[3] = {0.f, 0.f, 0.f};
+
+    ASensorManager *sensorManager = nullptr;
+    ASensorEventQueue *sensorEventQueue = nullptr;
+    float floorAltitude = 0;
+    float currentPressure = 0;
 
     int screenWidth = 0;
     int screenHeight = 0;
@@ -107,6 +119,47 @@ void offsetPosWithQuat(AlvrQuat q, float offset[3], float outPos[3]) {
     outPos[1] -= rotatedOffset[1] - FLOOR_HEIGHT;
     outPos[2] -= rotatedOffset[2];
 }
+
+/* Barometer-based altitude tracking code */
+float SEA_LEVEL_PRESSURE = 1013.25f;
+
+float pressureToAltitude(float p0, float p) {
+    float coef = 1.0f / 5.255f;
+    return 44330.0f * (1.0f - (float) pow(p / p0, coef));
+}
+
+float getAltitudeFromBarometer() {
+    float floorAltitude = CTX.floorAltitude;
+    float currentAltitude = pressureToAltitude(SEA_LEVEL_PRESSURE, CTX.currentPressure);
+    return currentAltitude - floorAltitude;
+}
+
+static int onSensorChanged(int fd, int events, void* data) {
+    ASensorEvent event;
+    float pressure = 0.f;
+    float accel[3] = {0.f, 0.f, 0.f};
+    while (ASensorEventQueue_getEvents(CTX.sensorEventQueue, &event, 1) > 0){
+        if (event.type != ASENSOR_TYPE_PRESSURE) {
+            continue;
+        }
+        // TODO: this will require an actual calibration process, which will
+        // probably be part of the settings menu! For now, we assume the first pressure
+        // value is the floor value, but this will be changed ASAP.
+        if (CTX.floorAltitude == 0) {
+            CTX.floorAltitude = pressureToAltitude(SEA_LEVEL_PRESSURE, event.pressure);
+            info("Setting floorAltitude to %f", CTX.floorAltitude);
+        }
+        CTX.currentPressure = event.pressure;
+        if (event.pressure < tmp_minPressure || tmp_minPressure == 0) {
+            tmp_minPressure = event.pressure;
+        }
+        if (event.pressure > tmp_maxPressure) {
+            tmp_maxPressure = event.pressure;
+        }
+    }
+    return 1;
+}
+/* End of barometer-based altitude tracking code */
 
 AlvrFov getFov(CardboardEye eye) {
     float f[4];
@@ -178,6 +231,10 @@ AlvrPose getPose(uint64_t timestampNs) {
                                                arRawPose[3]};
             pose.orientation = orientation;
             CTX.lastOrientation = pose.orientation;
+        }
+
+        if (useBarometerAltitudeTracking) {
+            pose.position[1] = getAltitudeFromBarometer();
         }
 
         ArPose_destroy(arPose);
@@ -358,6 +415,30 @@ extern "C" JNIEXPORT void JNICALL Java_viritualisres_phonevr_ALVRActivity_initia
         }
 
         ArFrame_create(CTX.arSession, &CTX.arFrame);
+    }
+
+    /* Set up sensor for barometer-based altitude tracking */
+    if (useBarometerAltitudeTracking) {
+        // CTX.sensorManager = ASensorManager_getInstanceForPackage("viritualires.phonevr");
+        CTX.sensorManager = ASensorManager_getInstance();
+        const ASensor *pressureSensor = ASensorManager_getDefaultSensor(CTX.sensorManager, ASENSOR_TYPE_PRESSURE);
+        if (pressureSensor == nullptr) {
+            error("initializeNative: Could not get pressure sensor");
+            return;
+        }
+        CTX.sensorEventQueue = ASensorManager_createEventQueue(CTX.sensorManager, ALooper_forThread(), 3, onSensorChanged, &CTX);
+
+        auto status = ASensorEventQueue_enableSensor(CTX.sensorEventQueue, pressureSensor);
+        if (status) {
+            error("initializeNative: Could not enable pressure sensor");
+            return;
+        }
+
+        status = ASensorEventQueue_setEventRate(CTX.sensorEventQueue, pressureSensor, (1000000 / 10));
+        if (status) {
+            error("initializeNative: Could not set pressure sensor event rate");
+            return;
+        }
     }
 }
 
